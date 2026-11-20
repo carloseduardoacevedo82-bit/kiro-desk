@@ -53,7 +53,8 @@ function stripWake(text) {
 
 // Devuelve lista de acciones o null si no reconoce el comando.
 function quickParse(raw) {
-  const t = norm(stripWake(raw));
+  // Whisper a veces separa "recuérdame" en "recuerda me / recuerda mi".
+  const t = norm(stripWake(raw)).replace(/^recuerda (me|mi)\b/, 'recuerdame').replace(/^recordame\b/, 'recuerdame').replace(/^agrega\s*ta\s+tarea\b/, 'agrega tarea').replace(/^agrega\s*ta\s*e?\s*rea\b/, 'agrega tarea');
   if (!t) return null;
   let m;
 

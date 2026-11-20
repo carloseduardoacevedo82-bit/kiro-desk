@@ -1,7 +1,7 @@
 {
   "name": "kiro-desk",
   "productName": "Kiro Desk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Kiro Desk - tu asistente de escritorio con IA local",
   "main": "src/main.js",
   "author": "carloseduardoacevedo82-bit",
@@ -41,8 +41,11 @@
         "releaseType": "release"
       }
     ],
-    "asarUnpack": [
-      "src/listen.ps1"
+    "extraResources": [
+      {
+        "from": "vendor/whisper",
+        "to": "whisper"
+      }
     ]
   },
   "dependencies": {

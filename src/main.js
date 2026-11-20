@@ -63,6 +63,8 @@ function createWindow() {
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true);
   place('collapsed');
+  win.webContents.session.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'media'));
+  win.webContents.session.setPermissionCheckHandler((_wc, perm) => perm === 'media');
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.once('ready-to-show', () => win.showInactive());
   win.on('blur', () => { if (mode === 'expanded' && !pinned) setMode('collapsed'); });
@@ -101,7 +103,6 @@ function setSetting(key, value) {
   s[key] = value;
   store.save();
   if (key === 'autostart' && app.isPackaged) app.setLoginItemSettings({ openAtLogin: !!value });
-  if (key === 'wakeWord') value ? startWake() : voice.stopWake();
   tray?.rebuild?.();
   refresh();
 }
@@ -135,25 +136,6 @@ async function handleInput(text, source = 'text') {
   } finally {
     thinking = false;
   }
-}
-
-// ---------- Palabra clave "Kiro" ----------
-let wakeArmedUntil = 0;
-function startWake() {
-  voice.startWake(async ({ text, confidence }) => {
-    const n = F.norm(text);
-    const hasWake = /^(oye |hey |ok )?(kiro|quiero|kilo|ciro|chiro)\b/.test(n);
-    if (hasWake && confidence < 0.3) return;
-    if (!hasWake && Date.now() > wakeArmedUntil) return;
-    const rest = C.stripWake(text);
-    if (hasWake && !rest) {
-      wakeArmedUntil = Date.now() + 8000;
-      send('voice:heard', { text: '', listening: true });
-      return;
-    }
-    wakeArmedUntil = 0;
-    send('voice:heard', { text: rest, listening: false });
-  });
 }
 
 // ---------- Reloj: recordatorios, timers y enfoque ----------
@@ -200,11 +182,9 @@ function ipc() {
   h('desktop:organize', () => { const r = F.desktopOrganize(); refresh(); return r; });
   h('desktop:undo', () => { const r = F.desktopUndo(); refresh(); return r; });
   h('desktop:open', () => shell.openPath(app.getPath('desktop')));
-  h('voice:listen', async () => {
-    const hadWake = voice.pauseWake();
-    try { return await voice.listenOnce(8); } finally { if (hadWake) startWake(); }
-  });
-  h('voice:stop', () => voice.stopOnce());
+  h('voice:status', () => voice.status());
+  h('voice:download', async () => { await voice.download((pct) => send('voice:download', pct)); return voice.status(); });
+  h('voice:transcribe', (wav) => voice.transcribe(wav));
   h('settings:set', (k, v) => setSetting(k, v));
   h('ai:status', () => ai.status());
   h('ai:pull', async () => { await ai.pullModel((pct, status) => send('ai:pull', { pct, status })); ai.warmup(); return true; });
@@ -235,10 +215,11 @@ app.whenReady().then(() => {
   powerMonitor.on('resume', () => setTimeout(tick, 1500));
 
   ai.status().then((st) => { if (st.running && st.hasModel) ai.warmup(); });
-  if (s.settings.wakeWord) startWake();
+  // Descarga la voz (Whisper) la primera vez, en segundo plano.
+  if (!voice.status().ready) voice.download((pct) => send('voice:download', pct)).catch(() => {});
 });
 
 app.on('second-instance', () => { if (win) { win.show(); setMode('expanded'); } });
-app.on('before-quit', () => { app.isQuitting = true; store.get().lastSeen = Date.now(); store.flush(); voice.stopWake(); voice.stopOnce(); });
+app.on('before-quit', () => { app.isQuitting = true; store.get().lastSeen = Date.now(); store.flush(); });
 app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('window-all-closed', (e) => e.preventDefault());

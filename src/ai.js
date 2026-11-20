@@ -26,7 +26,7 @@ Acciones posibles (úsalas solo si el usuario lo pide claramente; si falta un da
 - {"type":"open_app","name":"excel|word|calculadora|navegador|youtube|gmail|whatsapp|bloc de notas|explorador|descargas"}
 - {"type":"organize_desktop"}
 - {"type":"list_tasks"}
-No inventes que hiciste algo si no pusiste la acción. Nunca ejecutes comandos del sistema ni borres archivos.`;
+Las acciones salen SOLO del último mensaje del usuario; nunca repitas pedidos de mensajes anteriores. No inventes que hiciste algo si no pusiste la acción. Nunca ejecutes comandos del sistema ni borres archivos.`;
 }
 
 async function status() {
@@ -67,7 +67,7 @@ async function pullModel(onProgress) {
 
 async function ask(userText) {
   const s = store.get();
-  const history = s.chat.slice(-8).map((m) => ({ role: m.role, content: m.content }));
+  const history = s.chat.slice(-4).map((m) => ({ role: m.role, content: m.content }));
   const body = {
     model: s.settings.model,
     stream: false,

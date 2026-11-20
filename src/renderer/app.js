@@ -180,29 +180,89 @@ async function send(text, source = 'text') {
 }
 
 // ---------- Micrófono ----------
+let recSignal = null;
+let voicePct = null;   // % de descarga de la voz
+
+function micOn(on) { document.querySelectorAll('.mic').forEach((m) => m.classList.toggle('on', on)); }
+function voiceError(msg) {
+  say(msg, 'preocupado');
+  if (mode !== 'expanded') notice({ title: 'Micrófono', text: msg, timeout: 7000 });
+}
+
+// Graba hasta que dejas de hablar y lo pasa a texto con Whisper.
+async function hearOnce(opts) {
+  recSignal = { stop: false };
+  const wav = await Recorder.record({ ...opts, signal: recSignal });
+  recSignal = null;
+  if (!wav) return '';
+  setStatus('Entendiendo', 'busy');
+  Kiro.set('pensando');
+  const r = await kiro.voice.transcribe(wav);
+  if (r?.error) throw new Error(r.error);
+  return typeof r === 'string' ? r : '';
+}
+
 async function listen() {
-  if (listening) { kiro.voice.stop(); return; }
+  if (listening) { if (recSignal) recSignal.stop = true; return; }
+  const vs = await kiro.voice.status();
+  if (!vs.ready) {
+    voiceError(voicePct != null ? `Estoy descargando mi oído (${voicePct} %). En un momento podrás hablarme; mientras, escríbeme.` : 'Estoy preparando mi oído. Ve a Ajustes → Voz y pulsa Descargar.');
+    if (!vs.downloading) kiro.voice.download();
+    return;
+  }
+  wakePause = true;
   listening = true;
   speechSynthesis.cancel();
-  document.querySelectorAll('.mic').forEach((m) => m.classList.add('on'));
+  micOn(true);
   Kiro.set('escuchando');
   setStatus('Escuchando', 'listen');
-  if (mode === 'expanded') say('Te escucho…', 'escuchando'); else updateBar();
-  const r = await kiro.voice.listen();
+  if (mode === 'expanded') say('Te escucho… habla ahora.', 'escuchando'); else updateBar();
+  let text = '';
+  try {
+    text = await hearOnce({ waitMs: 7000, maxMs: 15000 });
+  } catch (e) {
+    listening = false; micOn(false); setStatus('Listo'); wakePause = false;
+    return voiceError(/Permission|NotAllowed|NotFound|device/i.test(e.message) ? 'No puedo usar el micrófono. Revisa que esté conectado y permitido en Configuración de Windows → Privacidad → Micrófono.' : e.message);
+  }
   listening = false;
-  document.querySelectorAll('.mic').forEach((m) => m.classList.remove('on'));
+  micOn(false);
   setStatus('Listo');
   updateBar();
-  if (r?.error) { say(r.error, 'preocupado'); if (mode !== 'expanded') notice({ title: 'Micrófono', text: r.error, timeout: 6000 }); return; }
-  if (!r?.text) { say('No escuché nada. Prueba otra vez o escríbeme.', 'confundido'); setTimeout(() => Kiro.set('feliz'), 2500); return; }
-  send(r.text, 'voice');
+  wakePause = false;
+  if (!text) { say('No te escuché bien. Acércate al micrófono y prueba otra vez, o escríbeme.', 'confundido'); setTimeout(() => Kiro.set('feliz'), 2500); return; }
+  if (mode === 'expanded') say(`«${text}»`, 'pensando');
+  send(text, 'voice');
 }
 $('#micBar').onclick = listen;
 kiro.on.voiceTrigger(listen);
-kiro.on.voiceHeard(({ text, listening: l }) => {
-  if (l) { chime(); Kiro.set('escuchando'); setStatus('Escuchando', 'listen'); notice({ title: 'Kiro', text: 'Te escucho…', timeout: 8000 }); return; }
-  if (text) send(text, 'voice');
+kiro.on.voiceDownload((pct) => {
+  voicePct = pct;
+  const t = $('#voiceTxt'); if (t) t.textContent = `Descargando… ${pct ?? ''} %`;
+  const b = $('#voiceBar i'); if (b && pct != null) b.style.width = pct + '%';
+  if (pct === 100) setTimeout(() => { voicePct = null; if (tab === 'settings' && mode === 'expanded') render(); }, 1500);
 });
+
+// Palabra clave "Kiro": escucha en bucle y solo actúa si la frase empieza con Kiro.
+let wakePause = false;
+let wakeRunning = false;
+const WAKE = /^\s*(oye |hey |ok |hola )?(kiro|quiero|kilo|ciro|chiro|kira|guiro|quiro)\b[\s,.:!¡¿?]*/i;
+async function wakeLoop() {
+  if (wakeRunning) return;
+  wakeRunning = true;
+  while (D?.settings.wakeWord) {
+    if (wakePause || listening || speechSynthesis.speaking || !(await kiro.voice.status()).ready) { await new Promise((r) => setTimeout(r, 800)); continue; }
+    let text = '';
+    try { text = await hearOnce({ waitMs: 30000, maxMs: 12000, silenceMs: 900 }); } catch { await new Promise((r) => setTimeout(r, 3000)); continue; }
+    setStatus('Listo');
+    if (!text || !WAKE.test(text)) { Kiro.set('feliz'); continue; }
+    const rest = text.replace(WAKE, '').trim();
+    chime();
+    if (!rest) { await listen(); continue; } // solo dijo "Kiro": escucha el pedido
+    send(rest, 'voice');
+  }
+  wakeRunning = false;
+  Recorder.close();
+}
 kiro.on.state((s) => { Kiro.set(s); if (s === 'pensando') setStatus('Pensando', 'busy'); });
 
 // ---------- Menú lateral ----------
@@ -397,6 +457,7 @@ async function organize() {
 async function viewSettings(v) {
   const s = D.settings;
   const st = await kiro.ai.status();
+  const vs = await kiro.voice.status();
   const up = updateState || (await kiro.update.state());
   v.innerHTML = `
     <h1>Ajustes</h1>
@@ -404,8 +465,11 @@ async function viewSettings(v) {
     <div class="setting"><span><span class="dot ${st.running ? 'ok' : 'bad'}"></span>IA local (Ollama) ${st.running ? 'encendida' : 'apagada'}</span>${st.running ? '' : '<button class="btn" id="getOllama">Descargar Ollama</button>'}</div>
     <div class="setting"><span><span class="dot ${st.hasModel ? 'ok' : 'warn'}"></span>Modelo ${esc(s.model)} ${st.hasModel ? 'listo' : 'sin descargar'}</span>${st.running && !st.hasModel ? '<button class="btn primary" id="pull">Descargar (2 GB)</button>' : ''}</div>
     <div class="progress" id="pullBar" style="display:none"><i></i></div><div class="muted small" id="pullTxt"></div>
+    <div class="setting"><div><div><span class="dot ${vs.ready ? 'ok' : 'warn'}"></span>Oído (Whisper) ${vs.ready ? 'listo' : vs.downloading || voicePct != null ? 'descargando' : 'sin descargar'}</div><div class="muted small" id="voiceTxt">${vs.ready ? 'Entiende español sin internet.' : voicePct != null ? `Descargando… ${voicePct} %` : `${vs.mb} MB, una sola vez.`}</div></div>
+      <div style="display:flex;gap:6px;align-items:center"><select id="vModel" style="border-radius:99px;padding:6px 10px">${Object.entries({ 'ggml-base-q5_1.bin': 'Rápido', 'ggml-small-q5_1.bin': 'Preciso' }).map(([k, l]) => `<option value="${k}" ${vs.model === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${vs.ready || vs.downloading ? '' : '<button class="btn primary" id="vDl">Descargar</button>'}</div></div>
+    <div class="progress" id="voiceBar" style="display:${vs.ready ? 'none' : 'block'}"><i style="width:${voicePct || 0}%"></i></div>
     <div class="setting"><span>Responder en voz alta</span><button class="switch ${s.voiceReplies ? 'on' : ''}" data-set="voiceReplies"></button></div>
-    <div class="setting"><div><div>Escuchar siempre «Kiro»</div><div class="muted small">Si no, usa el micrófono o Ctrl+Alt+K.</div></div><button class="switch ${s.wakeWord ? 'on' : ''}" data-set="wakeWord"></button></div>
+    <div class="setting"><div><div>Escuchar siempre «Kiro»</div><div class="muted small">Di «Kiro, …» sin tocar nada. Usa algo más de procesador.</div></div><button class="switch ${s.wakeWord ? 'on' : ''}" data-set="wakeWord"></button></div>
     <div class="setting"><span>Iniciar con Windows</span><button class="switch ${s.autostart ? 'on' : ''}" data-set="autostart"></button></div>
     <div class="setting"><span>Tu nombre</span><input id="nm" value="${esc(s.name)}" placeholder="Opcional" maxlength="30" style="width:160px;border-radius:99px"></div>
     <div class="setting"><div><div>Actualizaciones</div><div class="muted small" id="upMsg">${esc(up?.message || 'Se buscan solas cada 2 horas.')}</div></div>
@@ -413,6 +477,8 @@ async function viewSettings(v) {
     <div class="setting"><span>Borrar memoria de conversaciones</span><button class="btn danger" id="clr">Borrar</button></div>
     <div class="setting"><span class="muted small">Ctrl+Alt+K hablar · Ctrl+Alt+Espacio abrir · Esc cerrar</span><button class="btn danger" id="quit">Salir</button></div>`;
   v.querySelectorAll('[data-set]').forEach((b) => { b.onclick = () => kiro.settings.set(b.dataset.set, !b.classList.contains('on')); });
+  $('#vModel', v).onchange = async (e) => { await kiro.settings.set('voiceModel', e.target.value); kiro.voice.download(); render(); };
+  $('#vDl', v)?.addEventListener('click', () => { kiro.voice.download(); $('#voiceTxt', v).textContent = 'Descargando…'; });
   $('#nm', v).onchange = (e) => kiro.settings.set('name', e.target.value.trim());
   $('#clr', v).onclick = async () => { await kiro.chat.clear(); say('Listo, olvidé nuestras conversaciones.', 'carinoso'); };
   $('#upCheck', v).onclick = () => kiro.update.check();
@@ -461,12 +527,14 @@ kiro.on.update((u) => {
 // ---------- Datos ----------
 kiro.on.data((d) => {
   D = d;
+  if (D.settings.wakeWord) wakeLoop();
   updateBar();
   // Re-dibuja salvo que el usuario esté escribiendo o en Mi PC/Ajustes (vistas con carga propia).
   if (mode === 'expanded' && !['pc', 'settings'].includes(tab) && document.activeElement?.tagName !== 'INPUT') render();
 });
 kiro.getData().then((d) => {
   D = d;
+  if (D.settings.wakeWord) wakeLoop();
   updateBar();
   const h = new Date().getHours();
   Kiro.set(h >= 23 || h < 6 ? 'cansado' : 'feliz');

@@ -15,6 +15,7 @@ const DEFAULTS = {
     wakeWord: false,
     autostart: true,
     model: 'llama3.2:3b',
+    voiceModel: 'ggml-base-q5_1.bin',
     name: ''
   },
   lastSeen: 0
