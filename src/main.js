@@ -17,15 +17,15 @@ let mode = 'collapsed';
 let pinned = false;
 
 const SIZES = {
-  collapsed: { w: 340, h: 70 },
-  notice: { w: 440, h: 150 },
-  expanded: { w: 470, h: 660 },
+  collapsed: { w: 360, h: 72 },
+  notice: { w: 460, h: 160 },
+  expanded: { w: 760, h: 440 },
 };
 
 function place(m) {
   const { w, h } = SIZES[m];
   const wa = screen.getPrimaryDisplay().workArea;
-  win.setBounds({ x: Math.round(wa.x + (wa.width - w) / 2), y: wa.y + 4, width: w, height: h });
+  win.setBounds({ x: Math.round(wa.x + (wa.width - w) / 2), y: wa.y, width: w, height: h });
 }
 
 function setMode(m) {
@@ -196,7 +196,7 @@ function ipc() {
   h('habits:delete', (id) => { F.deleteHabit(id); refresh(); });
   h('focus:start', (m) => { F.focusStart(m); refresh(); });
   h('focus:stop', () => { F.focusStop(); refresh(); });
-  h('desktop:scan', () => F.desktopScan());
+  h('desktop:scan', () => { C.markPreview(); return F.desktopScan(); });
   h('desktop:organize', () => { const r = F.desktopOrganize(); refresh(); return r; });
   h('desktop:undo', () => { const r = F.desktopUndo(); refresh(); return r; });
   h('desktop:open', () => shell.openPath(app.getPath('desktop')));

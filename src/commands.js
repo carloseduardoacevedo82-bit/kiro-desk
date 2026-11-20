@@ -4,6 +4,7 @@ const { norm } = F;
 
 const WORDNUM = { un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 15, veinte: 20, veinticinco: 25, treinta: 30, cuarenta: 40, cuarentaicinco: 45, cincuenta: 50, sesenta: 60, noventa: 90 };
 const NUM = '(\\d+(?:[.,]\\d+)?|' + Object.keys(WORDNUM).join('|') + ')';
+let organizePreviewAt = 0;
 const toNum = (s) => (WORDNUM[s] ?? parseFloat(String(s).replace(',', '.')));
 
 // "10 minutos", "media hora", "2 horas", "30 segundos" -> ms
@@ -58,6 +59,9 @@ function quickParse(raw) {
 
   if (/^(ordena|organiza|limpia)( el| mi)? escritorio/.test(t)) return [{ type: 'organize_desktop' }];
   if (/^(deshace|deshaz|deshacer)( el)? (orden|escritorio)/.test(t)) return [{ type: 'undo_desktop' }];
+  // "sí, ordénalo" confirma siempre; "sí / dale / hazlo" solo justo después de la vista previa.
+  if (/^(si |ya |ok |dale )?(ordenalo|ordenalos|ordenala|ordenalas)( ya| ahora| por favor)?$/.test(t)) return [{ type: 'organize_confirm' }];
+  if (/^(si|dale|hazlo|si hazlo|si dale|ok|claro)$/.test(t) && Date.now() - organizePreviewAt < 5 * 60000) return [{ type: 'organize_confirm' }];
 
   if ((m = t.match(/^(?:pon|crea|inicia|empieza|activa)?\s*(?:un\s+)?(?:timer|temporizador|alarma|cronometro)\s+(?:de\s+)?(.+)/))) {
     const d = parseDuration(m[1]);
@@ -163,7 +167,15 @@ function execute(actions) {
           const s = F.desktopScan();
           if (!s.total) { said.push('Tu escritorio ya está ordenado.'); break; }
           confirm = { kind: 'organize', scan: s };
-          said.push(`Encontré ${s.total} archivo${s.total === 1 ? '' : 's'} suelto${s.total === 1 ? '' : 's'} en el escritorio. Revisa la vista previa y confirma.`);
+          organizePreviewAt = Date.now();
+          said.push(`Encontré ${s.total} archivo${s.total === 1 ? '' : 's'} suelto${s.total === 1 ? '' : 's'} en el escritorio. ¿Lo ordeno? Di «sí, ordénalo».`);
+          break;
+        }
+        case 'organize_confirm': {
+          organizePreviewAt = 0;
+          const r = F.desktopOrganize();
+          said.push(r.moved ? `Listo, ordené ${r.moved} archivo${r.moved === 1 ? '' : 's'} en la carpeta Escritorio ordenado.${r.errors.length ? ` ${r.errors.length} no se pudieron mover.` : ''}` : 'Tu escritorio ya está ordenado.');
+          if (r.moved) badge = 'Ordenado';
           break;
         }
         case 'undo_desktop': { const r = F.desktopUndo(); said.push(r.restored ? `Devolví ${r.restored} archivos a su lugar.` : 'No hay nada que deshacer.'); badge = 'Deshecho'; break; }
@@ -183,4 +195,5 @@ function execute(actions) {
   return { said, badge, confirm };
 }
 
-module.exports = { quickParse, execute, parseWhen, parseDuration, stripWake, HELP };
+const markPreview = () => { organizePreviewAt = Date.now(); };
+module.exports = { markPreview, quickParse, execute, parseWhen, parseDuration, stripWake, HELP };
