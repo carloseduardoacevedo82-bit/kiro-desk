@@ -1,7 +1,7 @@
 {
   "name": "kiro-desk",
   "productName": "Kiro Desk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Kiro Desk - tu asistente de escritorio con IA local",
   "main": "src/main.js",
   "author": "carloseduardoacevedo82-bit",
