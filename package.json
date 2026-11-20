@@ -1,0 +1,56 @@
+{
+  "name": "kiro-desk",
+  "productName": "Kiro Desk",
+  "version": "0.1.0",
+  "description": "Kiro Desk - tu asistente de escritorio con IA local",
+  "main": "src/main.js",
+  "author": "carloseduardoacevedo82-bit",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --publish never",
+    "release": "electron-builder --win nsis --publish always",
+    "icon": "electron tools/make-icon.js"
+  },
+  "build": {
+    "appId": "com.kirodesk.app",
+    "productName": "Kiro Desk",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "Kiro Desk"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "carloseduardoacevedo82-bit",
+        "repo": "kiro-desk",
+        "releaseType": "release"
+      }
+    ],
+    "asarUnpack": [
+      "src/listen.ps1"
+    ]
+  },
+  "dependencies": {
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  }
+}
