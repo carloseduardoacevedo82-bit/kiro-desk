@@ -6,7 +6,7 @@ Asistente de escritorio para Windows: una "isla" arriba de la pantalla con un pe
 - **Ctrl+Alt+K**: hablarle · **Ctrl+Alt+Espacio**: abrir/cerrar el panel · **Esc**: cerrar.
 - Ejemplos: "agrega tarea revisar planilla", "recuérdame pagar la luz a las 6 pm", "timer de 10 minutos", "modo enfoque", "tomé un vaso de agua", "abre Excel", "ordena el escritorio".
 - Ícono en la bandeja (junto al reloj): abrir, buscar actualizaciones, iniciar con Windows, salir.
-- Datos en `%APPDATA%\kiro-desk\kiro-data.json`.
+- Datos en `%APPDATA%\Kiro Desk\kiro-data.json`.
 
 ## Requisitos
 - Windows 10/11 64 bits, 8 GB de RAM.
